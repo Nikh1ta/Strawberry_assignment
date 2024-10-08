@@ -1,0 +1,218 @@
+---
+title: "Assignment"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-10-07"
+---
+
+# Introduction-
+This report presents the exploration, cleaning, and organization of the USDA strawberry dataset. The goal is to clean, organize, and explore the strawberry data, prepare the data for analysis
+
+# Assignment
+## Step 1- Data Exploration:
+Before cleaning any data, we need to understand the content and structure of the data. This involves looking at the types of variables, missing values, and general trends in the dataset.
+
+
+```{r}
+library(tidyverse)
+```
+First, we checked the head of the dataset. We few the first few rows of the dataset.
+
+```{r}
+strawberry_data <- read.csv("strawberries25_v3.csv")
+head(strawberry_data)
+```
+The dataset has several columns representing different attributes like Program, Year, Geo Level, and State. Some columns, such as Week.Ending, contain missing values (NA).
+
+Next, we explore the structure of the dataset to understand the data types of each column
+
+
+
+```{r}
+str(strawberry_data)
+```
+The dataset contains 12,669 observations and 21 variables. The columns include both character and numeric data types, as shown below:
+
+Program: chr (character)
+Year: int (integer)
+Week.Ending: logi (logical), contains only NA values.
+Geo.Level: chr (character)
+State: chr (character)
+State ANSI: int (integer)
+Ag.District: chr (character)
+Ag.District.Code: int (integer)
+The column Week.Ending contains entirely missing data, and other columns like Zip.Code and Watershed also contain many missing values.
+
+Next, we generate a summary of its contents to detect any unusual patterns, missing values, or outliers.
+
+```{r}
+summary(strawberry_data)
+```
+
+The summary shows the range of values for numerical columns like Year, State.ANSI, and Ag.District.Code. It also highlights the number of missing values in columns like Zip.Code, Region, Watershed, and Value. These columns either contain a significant amount of missing data or contain non-numeric placeholder values like (D) or (L) in the Value and CV.... columns.
+
+
+## Step 2 - Data Cleaning
+
+Based on Data Exploration, we can now proceed to Data Cleaning. 
+We can now drop irrelevant columns with mostly missing data, replace inconsistent placeholder values with NA, split columns containing multiple pieces of information into separate columns. 
+
+
+Dropping irrelevant columns-
+Columns like as Week.Ending, Zip.Code, Region, Watershed.Code, and Watershed contain mostly missing data, so we can drop these columns
+ 
+```{r}
+cleaned_data <- strawberry_data %>%
+  select(-c(Week.Ending, Zip.Code, Region, watershed_code, Watershed))
+```
+
+
+Handling Missing and Inconsistent Data-
+
+The dataset contains placeholder values such as (D), (L), and (Z) in the Value and CV.... columns, representing missing data. We replace these placeholders with NA to handle them appropriately in future analysis.
+
+```{r}
+cleaned_data <- cleaned_data %>%
+  mutate(across(where(is.character), ~na_if(., "(D)"))) %>%
+  mutate(across(where(is.character), ~na_if(., "(L)"))) %>%
+  mutate(across(where(is.character), ~na_if(., "(Z)")))
+```
+
+
+
+```{r}
+unique(cleaned_data$Data.Item)
+```
+
+```{r}
+colnames(cleaned_data)
+```
+
+```{r}
+head(cleaned_data)
+```
+There seems to be no chemical data, so we shall proceed without it.
+
+
+```{r}
+summary(cleaned_data$Value)
+
+```
+
+
+```{r}
+#converting value column to numeric
+non_numeric_values <- cleaned_data$Value[!grepl("^\\d+$", cleaned_data$Value)]
+unique(non_numeric_values)
+```
+
+```{r}
+cleaned_data$Value <- as.numeric(gsub("[^0-9.]", "", cleaned_data$Value))
+
+# Verify the structure and summary of the Value column
+str(cleaned_data$Value)
+
+```
+
+
+```{r}
+summary(cleaned_data$Value)
+```
+
+Based on the above, we see that there are a lot of NA values in the Value column. So now we will handle those missing values-
+
+```{r}
+# Remove rows with NA in Value column
+cleaned_data <- cleaned_data %>%
+  filter(!is.na(Value))
+
+# Replacing NA with the median value of the column
+cleaned_data$Value[is.na(cleaned_data$Value)] <- median(cleaned_data$Value, na.rm = TRUE)
+
+```
+
+Now that our data is cleaned, we can move onto the next step.
+
+## Step 3- Exploratory Data Analysis
+
+Summary statistics grouped by state, county, or year-
+
+```{r}
+cleaned_data %>%
+  group_by(State) %>%
+  summarise(
+    Min_Value = min(Value, na.rm = TRUE),
+    Max_Value = max(Value, na.rm = TRUE),
+    Mean_Value = mean(Value, na.rm = TRUE),
+    Total_Value = sum(Value, na.rm = TRUE)
+  )
+```
+
+#### Visualising the data-
+
+Distribution Plot: We plot the distribution of the cleaned Value column to see its spread.
+
+```{r}
+ggplot(cleaned_data, aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  labs(title = "Distribution of Value", x = "Value", y = "Frequency")
+
+```
+
+he histogram demonstrates that the majority of the Value data is clustered near zero, with a frequency peak around very low values. The distribution is highly right-skewed, indicating the presence of a small number of extremely large values (likely outliers) that push the tail of the distribution far beyond the rest of the data. This kind of distribution suggests that most strawberry-producing regions contribute relatively small amounts to the total value, while a few regions dominate with very large contributions.
+
+
+#### Time Series Plot-
+
+```{r}
+cleaned_data %>%
+  group_by(Year) %>%
+  summarise(Total_Value = sum(Value, na.rm = TRUE)) %>%
+  ggplot(aes(x = Year, y = Total_Value)) +
+  geom_line() +
+  labs(title = "Total Value Over Time", x = "Year", y = "Total Value")
+
+```
+The total value of strawberry production has experienced notable fluctuations from 2018 to 2024. There is a sharp decline between 2018 and 2020, possibly due to external factors like market demand, agricultural conditions, or economic downturns. From 2020 to 2022, the industry shows signs of recovery, with a sharp increase in total value. However, this growth is short-lived, as the value experiences another significant drop by 2024. These trends suggest the influence of external variables such as economic conditions, weather events, or shifts in production practices that could be explored in further analysis.
+
+
+#### Geographical analysis- 
+```{r}
+# Group by state and plot total value by state
+state_summary <- cleaned_data %>%
+  group_by(State) %>%
+  summarise(Total_Value = sum(Value, na.rm = TRUE)) %>%
+  arrange(desc(Total_Value))
+
+
+# Bar plot of total value by state
+ggplot(state_summary, aes(x = reorder(State, Total_Value), y = Total_Value)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  coord_flip() +  # Flip for easier readability
+  labs(title = "Total Value by State", x = "State", y = "Total Value")
+
+```
+
+The bar plot highlights the dominance of California in strawberry production, as it contributes the largest total value by far, reaching levels much higher than any other state. Pennsylvania and North Carolina, while significant contributors, are a distant second and third, respectively. Most other states, including states like Washington, Oregon, and Florida, have much lower total values. This indicates that strawberry production is highly concentrated in a few regions, with California being the primary producer. This concentration may be due to favorable growing conditions, established infrastructure, or larger-scale farming operations in California compared to other states.
+
+#### Trend Analysis-
+```{r}
+cleaned_data %>%
+  group_by(Year) %>%
+  summarise(Total_Value = sum(Value, na.rm = TRUE)) %>%
+  ggplot(aes(x = Year, y = Total_Value)) +
+  geom_line() +
+  labs(title = "Total Value Over Time", x = "Year", y = "Total Value")
+
+```
+The time series plot reveals considerable variation in the total value of strawberry production from 2018 to 2024. The total value drops between 2018 and 2020, which may be due to factors like changes in market demand, weather conditions, or production challenges. A sharp rise between 2020 and 2022 suggests a recovery phase, possibly spurred by favorable conditions or increased market demand. However, this growth is short-lived, as the total value declines steeply by 2024. These trends suggest that strawberry production or sales are sensitive to external influences, such as economic conditions, climate change, or policy shifts.
+
+
+
+
+
+### Conclusion-
+I think I got a bit confused with the assignment in general. I couldn't find any chemical column in the data so I just went on and did some data cleaning and visualisations that felt suitable.
+
+
